@@ -708,7 +708,7 @@ local ModSection = MiscTab:Section({
 local modDetectionEnabled = false
 local modScanTask = nil
 local GROUP_ID = 2935212
-local MOD_ROLE_ID = 20294813 -- "Game Moderation and Administration" role ID[reference:1]
+local MOD_ROLE_ID = 20294813 -- "Game Moderation and Administration" role ID
 local lastModAlert = {}
 local detectedMods = {}
 
@@ -735,7 +735,7 @@ local function checkUserModStatus(userId)
     return result
 end
 
--- Function to scan for moderators
+-- Function to scan for moderators (UPDATED: with console prints)
 local function scanForModerators()
     local moderators = {}
     for _, plr in ipairs(Players:GetPlayers()) do
@@ -745,6 +745,12 @@ local function scanForModerators()
                 table.insert(moderators, plr.Name)
             end
         end
+    end
+    -- Console output
+    if #moderators == 0 then
+        print("No Mod Found")
+    else
+        print("Moderator(s) found: " .. table.concat(moderators, ", "))
     end
     return moderators
 end
@@ -759,7 +765,7 @@ local function checkSpecificUser(username)
     return false, nil
 end
 
--- Function to start/stop the auto-scan
+-- Function to start/stop the auto-scan (UPDATED: with console prints)
 local function toggleModDetection(state)
     modDetectionEnabled = state
     if modScanTask then
@@ -767,6 +773,7 @@ local function toggleModDetection(state)
         modScanTask = nil
     end
     if state then
+        print("Auto Moderator Detection ENABLED - Scanning every 10 seconds")
         detectedMods = {}
         lastModAlert = {}
         -- Run an initial scan immediately
@@ -783,6 +790,8 @@ local function toggleModDetection(state)
                     detectedMods[name] = true
                     lastModAlert[name] = tick()
                 end
+            else
+                print("No Mod Found") -- Additional output for initial scan
             end
         end)
         -- Start the periodic scan (every 10 seconds)
@@ -792,6 +801,9 @@ local function toggleModDetection(state)
             if tick() % 10 < 0.1 then
                 task.spawn(function()
                     local mods = scanForModerators()
+                    if #mods == 0 then
+                        print("No Mod Found") -- Console output on each auto-scan with no mods
+                    end
                     for _, name in ipairs(mods) do
                         if not detectedMods[name] then
                             detectedMods[name] = true
@@ -818,6 +830,7 @@ local function toggleModDetection(state)
                         if not stillHere then
                             detectedMods[name] = nil
                             lastModAlert[name] = nil
+                            print("Moderator left: " .. name)
                         end
                     end
                 end)
@@ -826,6 +839,7 @@ local function toggleModDetection(state)
     else
         detectedMods = {}
         lastModAlert = {}
+        print("Auto Moderator Detection DISABLED")
         WindUI:Notify({
             Title = "Moderator Detection",
             Content = "Auto-scan disabled.",
@@ -844,11 +858,12 @@ local modToggle = ModSection:Toggle({
     end
 })
 
--- Manual scan button for specific user
+-- Manual scan button for specific user (UPDATED: with console prints)
 ModSection:Button({
     Title = "Scan for 'chilten44pa'",
     Desc = "Check if chilten44pa is in the server",
     Callback = function()
+        print("Scanning for specific user: chilten44pa")
         local found, name = checkSpecificUser("chilten44pa")
         if found then
             WindUI:Notify({
@@ -856,21 +871,24 @@ ModSection:Button({
                 Content = name .. " is currently in the server!",
                 Duration = 5
             })
+            print("User found: " .. name)
         else
             WindUI:Notify({
                 Title = "🔍 User Not Found",
                 Content = "chilten44pa is not in the server.",
                 Duration = 5
             })
+            print("chilten44pa not found in server")
         end
     end
 })
 
--- Manual full scan button
+-- Manual full scan button (UPDATED: with console prints)
 ModSection:Button({
     Title = "Manual Full Scan",
     Desc = "Scan for all moderators in the server",
     Callback = function()
+        print("Manual full scan initiated")
         WindUI:Notify({
             Title = "Scanning...",
             Content = "Checking for moderators...",
@@ -885,12 +903,14 @@ ModSection:Button({
                     Content = "Moderator(s) in server: " .. modList,
                     Duration = 8
                 })
+                print("Manual scan completed - Moderators found: " .. modList)
             else
                 WindUI:Notify({
                     Title = "✅ No Moderators",
                     Content = "No 'Game Moderation and Administration' members found.",
                     Duration = 5
                 })
+                print("No Mod Found") -- Console output for manual scan with no mods
             end
         end)
     end
