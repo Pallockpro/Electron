@@ -4,6 +4,7 @@
         - Security: Destroy Desync Patch, AC Detection + Clipboard, Spoof Player Data, Kick Detection & Trace
         - Movement: Walk Speed (ERX method), Noclip, Infinite Jump
         - Premium: God Mode, Infinite Stamina (requires PandaAuth key)
+        - Misc: Moderator Detection (auto-scan + manual)
     Uses WindUI + PandaAuth (Wilkins) – key system built in.
     Author: @blackberryfr
 ]]
@@ -29,6 +30,7 @@ local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
+local RunService = game:GetService("RunService")
 
 -- ========== 2. Prepare the PandaAuth (Wilkins) service ==========
 local WilkinsLib = nil
@@ -117,7 +119,7 @@ local Window = WindUI:CreateWindow({
     Title = "Electron Hub",
     Icon = "zap",
     Author = "@blackberryfr",
-    Size = UDim2.fromOffset(520, 460),
+    Size = UDim2.fromOffset(520, 500),
     Transparent = true,
     Theme = "Dark",
     Resizable = true,
@@ -154,7 +156,7 @@ if WilkinsLib then
 end
 
 -- ===============================
--- SECURITY TAB (unchanged from original)
+-- SECURITY TAB
 -- ===============================
 local SecurityTab = Window:Tab({
     Title = "Security",
@@ -690,6 +692,211 @@ else
 end
 
 -- ===============================
+-- MISC TAB (Moderator Detection)
+-- ===============================
+local MiscTab = Window:Tab({
+    Title = "Misc",
+    Icon = "settings"
+})
+
+-- Moderator Detection Section
+local ModSection = MiscTab:Section({
+    Title = "Moderator Detection"
+})
+
+-- Variables for moderator detection
+local modDetectionEnabled = false
+local modScanTask = nil
+local GROUP_ID = 2935212
+local MOD_ROLE_ID = 20294813 -- "Game Moderation and Administration" role ID[reference:1]
+local lastModAlert = {}
+local detectedMods = {}
+
+-- Function to check if a user has the moderator role in the SCP group
+local function checkUserModStatus(userId)
+    local success, result = pcall(function()
+        local url = "https://groups.roblox.com/v1/users/" .. tostring(userId) .. "/groups/roles"
+        local response = game:HttpGet(url)
+        local data = HttpService:JSONDecode(response)
+        if data and data.data then
+            for _, groupData in ipairs(data.data) do
+                if groupData.group and groupData.group.id == GROUP_ID then
+                    if groupData.role and groupData.role.id == MOD_ROLE_ID then
+                        return true
+                    end
+                end
+            end
+        end
+        return false
+    end)
+    if not success then
+        return false
+    end
+    return result
+end
+
+-- Function to scan for moderators
+local function scanForModerators()
+    local moderators = {}
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local isMod = checkUserModStatus(plr.UserId)
+            if isMod then
+                table.insert(moderators, plr.Name)
+            end
+        end
+    end
+    return moderators
+end
+
+-- Function to check if a specific user is in the server
+local function checkSpecificUser(username)
+    for _, plr in ipairs(Players:GetPlayers()) do
+        if string.lower(plr.Name) == string.lower(username) then
+            return true, plr.Name
+        end
+    end
+    return false, nil
+end
+
+-- Function to start/stop the auto-scan
+local function toggleModDetection(state)
+    modDetectionEnabled = state
+    if modScanTask then
+        modScanTask:Disconnect()
+        modScanTask = nil
+    end
+    if state then
+        detectedMods = {}
+        lastModAlert = {}
+        -- Run an initial scan immediately
+        task.spawn(function()
+            local mods = scanForModerators()
+            if #mods > 0 then
+                local modList = table.concat(mods, ", ")
+                WindUI:Notify({
+                    Title = "⚠️ Moderator Detected",
+                    Content = "Moderator(s) in server: " .. modList,
+                    Duration = 8
+                })
+                for _, name in ipairs(mods) do
+                    detectedMods[name] = true
+                    lastModAlert[name] = tick()
+                end
+            end
+        end)
+        -- Start the periodic scan (every 10 seconds)
+        modScanTask = RunService.Heartbeat:Connect(function()
+            if not modDetectionEnabled then return end
+            -- Only scan every 10 seconds
+            if tick() % 10 < 0.1 then
+                task.spawn(function()
+                    local mods = scanForModerators()
+                    for _, name in ipairs(mods) do
+                        if not detectedMods[name] then
+                            detectedMods[name] = true
+                            lastModAlert[name] = tick()
+                            WindUI:Notify({
+                                Title = "⚠️ Moderator Joined",
+                                Content = name .. " is now in the server!",
+                                Duration = 8
+                            })
+                        else
+                            -- Update last seen time
+                            lastModAlert[name] = tick()
+                        end
+                    end
+                    -- Check for moderators that left
+                    for name, _ in pairs(detectedMods) do
+                        local stillHere = false
+                        for _, modName in ipairs(mods) do
+                            if modName == name then
+                                stillHere = true
+                                break
+                            end
+                        end
+                        if not stillHere then
+                            detectedMods[name] = nil
+                            lastModAlert[name] = nil
+                        end
+                    end
+                end)
+            end
+        end)
+    else
+        detectedMods = {}
+        lastModAlert = {}
+        WindUI:Notify({
+            Title = "Moderator Detection",
+            Content = "Auto-scan disabled.",
+            Duration = 3
+        })
+    end
+end
+
+-- Toggle for auto moderator detection
+local modToggle = ModSection:Toggle({
+    Title = "Auto Moderator Detection",
+    Desc = "Scans for 'Game Moderation and Administration' every 10 seconds",
+    Value = false,
+    Callback = function(state)
+        toggleModDetection(state)
+    end
+})
+
+-- Manual scan button for specific user
+ModSection:Button({
+    Title = "Scan for 'chilten44pa'",
+    Desc = "Check if chilten44pa is in the server",
+    Callback = function()
+        local found, name = checkSpecificUser("chilten44pa")
+        if found then
+            WindUI:Notify({
+                Title = "🔍 User Found",
+                Content = name .. " is currently in the server!",
+                Duration = 5
+            })
+        else
+            WindUI:Notify({
+                Title = "🔍 User Not Found",
+                Content = "chilten44pa is not in the server.",
+                Duration = 5
+            })
+        end
+    end
+})
+
+-- Manual full scan button
+ModSection:Button({
+    Title = "Manual Full Scan",
+    Desc = "Scan for all moderators in the server",
+    Callback = function()
+        WindUI:Notify({
+            Title = "Scanning...",
+            Content = "Checking for moderators...",
+            Duration = 3
+        })
+        task.spawn(function()
+            local mods = scanForModerators()
+            if #mods > 0 then
+                local modList = table.concat(mods, ", ")
+                WindUI:Notify({
+                    Title = "⚠️ Moderator(s) Found",
+                    Content = "Moderator(s) in server: " .. modList,
+                    Duration = 8
+                })
+            else
+                WindUI:Notify({
+                    Title = "✅ No Moderators",
+                    Content = "No 'Game Moderation and Administration' members found.",
+                    Duration = 5
+                })
+            end
+        end)
+    end
+})
+
+-- ===============================
 -- UPDATE REFERENCES ON RESPAWN
 -- ===============================
 player.CharacterAdded:Connect(function(newChar)
@@ -706,12 +913,23 @@ player.CharacterAdded:Connect(function(newChar)
     end
 end)
 
+-- Clean up on player leave
+Players.PlayerRemoving:Connect(function(plr)
+    if modDetectionEnabled then
+        local name = plr.Name
+        if detectedMods[name] then
+            detectedMods[name] = nil
+            lastModAlert[name] = nil
+        end
+    end
+end)
+
 -- ===============================
 -- NOTIFY LOADED
 -- ===============================
 WindUI:Notify({
     Title = "Electron Hub Loaded",
-    Content = "Security & Movement ready! Premium features require a key.",
+    Content = "Security, Movement & Misc ready! Premium features require a key.",
     Duration = 3
 })
 
