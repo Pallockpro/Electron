@@ -1,5 +1,5 @@
 --[[
-    Flee The Facility (Koala Scripts v4) – WindUI + PandaAuth (Wilkins)
+    Flee The Facility (Electron V1.0.0) – WindUI + PandaAuth (Wilkins)
     Premium‑locked features: 3rd Person Beast, Anti PC Error, Sound Spam (4)
     Organized with tab icons and premium 👑 markers.
 ]]
@@ -142,7 +142,7 @@ end
 -- ========== 6. All exploit features ==========
 
 local Settings = {}
-local ConfigFile = "FTF_WindUI_Full.json"
+local ConfigFile = "Electron_WindUI_Full.json"
 
 local function SaveSettings()
     pcall(function() writefile(ConfigFile, HttpService:JSONEncode(Settings)) end)
